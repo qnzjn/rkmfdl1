@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>닉네임 설정</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Noto Sans KR', sans-serif;
+        }
+
+        body {
+            height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .nickname-container {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            width: 90%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        h2 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        input[type="text"] {
+            padding: 12px 20px;
+            border: 2px solid rgba(102, 126, 234, 0.2);
+            border-radius: 25px;
+            font-size: 1rem;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        input[type="text"]:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+        }
+
+        .nickname-status {
+            margin-top: 8px;
+            font-size: 0.9rem;
+            height: 20px;
+        }
+
+        .available {
+            color: #2ecc71;
+        }
+
+        .unavailable {
+            color: #e74c3c;
+        }
+
+        .checking {
+            color: #f39c12;
+        }
+
+        button {
+            padding: 12px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        input.valid {
+            border-color: #2ecc71 !important;
+        }
+
+        input.invalid {
+            border-color: #e74c3c !important;
+        }
+
+        .error-message {
+            color: #e74c3c;
+            margin-top: 10px;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="nickname-container">
+        <h2>닉네임 설정</h2>
+        {% if error %}
+        <p class="error-message">{{ error }}</p>
+        {% endif %}
+        <form action="{{ url_for('set_nickname') }}" method="post" id="nickname-form">
+            <input type="text" name="nickname" id="nickname-input" 
+                   placeholder="닉네임을 입력하세요 (2-10자)" 
+                   required minlength="2" maxlength="10">
+            <div class="nickname-status" id="nickname-status"></div>
+            <button type="submit" id="submit-btn" disabled>채팅 입장</button>
+        </form>
+    </div>
+
+    <script>
+        const nicknameInput = document.getElementById('nickname-input');
+        const nicknameStatus = document.getElementById('nickname-status');
+        const submitBtn = document.getElementById('submit-btn');
+        let checkTimeout;
+
+        nicknameInput.addEventListener('input', () => {
+            const nickname = nicknameInput.value.trim();
+            clearTimeout(checkTimeout);
+            
+            // 입력값 기본 검증
+            if (nickname.length < 2) {
+                updateStatus('닉네임은 2자 이상이어야 합니다.', 'unavailable');
+                return;
+            }
+            if (nickname.length > 10) {
+                updateStatus('닉네임은 10자를 초과할 수 없습니다.', 'unavailable');
+                return;
+            }
+
+            updateStatus('검사중...', 'checking');
+            
+            // 타이핑 완료 0.5초 후 중복 검사
+            checkTimeout = setTimeout(() => {
+                checkNickname(nickname);
+            }, 500);
+        });
+
+        async function checkNickname(nickname) {
+            try {
+                const response = await fetch('/check_nickname', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ nickname: nickname })
+                });
+                const data = await response.json();
+                
+                if (data.available) {
+                    updateStatus('사용 가능한 닉네임입니다.', 'available');
+                    nicknameInput.classList.add('valid');
+                    nicknameInput.classList.remove('invalid');
+                    submitBtn.disabled = false;
+                } else {
+                    updateStatus('이미 사용중인 닉네임입니다.', 'unavailable');
+                    nicknameInput.classList.add('invalid');
+                    nicknameInput.classList.remove('valid');
+                    submitBtn.disabled = true;
+                }
+            } catch (error) {
+                updateStatus('닉네임 검사 중 오류가 발생했습니다.', 'unavailable');
+                submitBtn.disabled = true;
+            }
+        }
+
+        function updateStatus(message, className) {
+            nicknameStatus.textContent = message;
+            nicknameStatus.className = 'nickname-status ' + className;
+            if (className === 'checking') {
+                submitBtn.disabled = true;
+                nicknameInput.classList.remove('valid', 'invalid');
+            }
+        }
+
+        // 폼 제출 전 한번 더 검증
+        document.getElementById('nickname-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const nickname = nicknameInput.value.trim();
+            
+            try {
+                const response = await fetch('/check_nickname', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ nickname: nickname })
+                });
+                const data = await response.json();
+                
+                if (data.available) {
+                    e.target.submit();
+                } else {
+                    updateStatus('이미 사용중인 닉네임입니다.', 'unavailable');
+                    submitBtn.disabled = true;
+                }
+            } catch (error) {
+                updateStatus('오류가 발생했습니다. 다시 시도해주세요.', 'unavailable');
+            }
+        });
+    </script>
+</body>
+</html>
